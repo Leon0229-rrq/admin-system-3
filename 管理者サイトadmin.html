@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>スタッフ管理画面</title>
+<style>
+  body{ font-family: sans-serif; padding:18px; font-size:17px; }
+  table{ width:100%; border-collapse:collapse; margin-top:10px; }
+  th,td{ border:1px solid #ccc; padding:8px; text-align:center; }
+  button{ padding:6px 10px; margin:4px; font-size:15px; }
+  #settings { margin-top:8px; }
+</style>
+</head>
+<body>
+  <h1>スタッフ用 予約管理</h1>
+
+  <div id="summary">読み込み中...</div>
+
+  <div id="settings">
+    待ち時間オフセット（分）：<input id="offsetInput" type="number" value="0" style="width:80px;"/> 
+    <button onclick="setOffset()">変更</button>
+    <span id="offsetMsg"></span>
+  </div>
+
+  <table id="listTable">
+    <thead>
+      <tr><th>受付番号</th><th>予約人数</th><th>予約時刻</th><th>状態</th><th>推定待ち時間(分)</th><th>操作</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+<script>
+const GAS_URL = "https://script.google.com/macros/s/AKfycbxTvKSx_2WLtl3lEOIsUiDp6fLKqKDRPw1Wq7Uk8nFvSlCgjFFccln-yThWTDoAawYY/exec"; //
+async function loadList() {
+  try {
+    const res = await fetch(GAS_URL);
+    const data = await res.json();
+    const tbody = document.querySelector("#listTable tbody");
+    tbody.innerHTML = "";
+    // summary
+    document.getElementById("summary").innerText = `現在の待ち人数: ${data.totalWaiting} 人 ／ 設定オフセット: ${data.offsetMinutes}分`;
+    document.getElementById("offsetInput").value = data.offsetMinutes || 0;
+
+    data.list.forEach(item => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
+        <td>${item.number}</td>
+        <td>${item.people}</td>
+        <td>${item.time ? new Date(item.time).toLocaleString() : ""}</td>
+        <td>${item.state}</td>
+        <td>${item.waitMinutes}</td>
+        <td>
+          <button onclick="updateState(${item.number}, 'pickup')">受け取り済み</button>
+          <button onclick="updateState(${item.number}, 'hold')">保留</button>
+          <button onclick="updateState(${item.number}, 'cancel')">キャンセル</button>
+        </td>`;
+      tbody.appendChild(tr);
+    });
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+async function updateState(number, action) {
+  if (action === 'cancel' && !confirm("本当にキャンセルしますか？")) return;
+  try {
+    await fetch(GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify({ action: action, number: number })
+    });
+    // 即座に更新してUIから消えるようにする
+    loadList();
+  } catch (e) {
+    alert("更新失敗");
+    console.error(e);
+  }
+}
+
+async function setOffset() {
+  const m = Number(document.getElementById("offsetInput").value) || 0;
+  try {
+    const res = await fetch(GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type":"application/json" },
+      body: JSON.stringify({ action: "set_offset", minutes: m })
+    });
+    const data = await res.json();
+    document.getElementById("offsetMsg").innerText = ` 設定を ${data.minutes} 分に更新しました`;
+    loadList();
+  } catch (e) {
+    alert("設定失敗");
+  }
+}
+
+loadList();
+setInterval(loadList, 9000); // 9秒ごと更新
+</script>
+</body>
+</html>
